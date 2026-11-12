@@ -1,0 +1,26 @@
+# Android / Gradle
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+local.properties
+.gradle/
+.kotlin/
+build/
+captures/
+.cxx/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Rust
+rust/target/
+audio/src/main/jniLibs/
+
+# Logs / temporales
+*.log
+*.hprof
+.DS_Store

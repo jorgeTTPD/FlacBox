@@ -31,13 +31,16 @@ symphonia = { version = "0.6", default-features = false, features = [
     "id3v2",
 ] }
 lofty = "0.25"
-jni = "0.21"
 rtrb = "0.4"
 crossbeam-channel = "0.5"
 log = "0.4"
 
 [target.'cfg(target_os = "android")'.dependencies]
 oboe = "0.6"
+jni = "0.21"
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+cpal = "0.18"
 
 [profile.dev]
 opt-level = 1

@@ -1,10 +1,15 @@
 pub mod decoder;
-mod engine;
+pub mod engine;
+#[cfg(target_os = "android")]
 mod jni_api;
 pub mod metadata;
+pub mod player;
+pub mod shared;
+pub mod tags;
 #[cfg(target_os = "android")]
 mod output;
-mod shared;
+#[cfg(not(target_os = "android"))]
+mod output_cpal;
 
 #[cfg(target_os = "android")]
 mod android_log {
@@ -46,9 +51,9 @@ mod android_log {
     }
 }
 
+#[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "system" fn JNI_OnLoad(_vm: jni::JavaVM, _reserved: *mut std::os::raw::c_void) -> jni::sys::jint {
-    #[cfg(target_os = "android")]
     android_log::install();
     log::info!("flacplayer nativo cargado");
     jni::sys::JNI_VERSION_1_6

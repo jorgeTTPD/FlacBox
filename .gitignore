@@ -18,6 +18,7 @@ captures/
 
 # Rust
 rust/target/
+desktop/target/
 audio/src/main/jniLibs/
 
 # Logs / temporales

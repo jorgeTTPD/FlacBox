@@ -4,15 +4,16 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use crossbeam_channel::{Receiver, Sender};
-use rtrb::{Producer, RingBuffer};
 
 use crate::decoder::{DecCmd, DecEvt};
 use crate::shared::*;
 
 #[cfg(target_os = "android")]
-type StreamHandle = crate::output::Stream;
+use crate::output as backend;
 #[cfg(not(target_os = "android"))]
-type StreamHandle = ();
+use crate::output_cpal as backend;
+
+type StreamHandle = backend::Stream;
 
 pub enum Cmd {
     SetQueue {
@@ -242,9 +243,6 @@ pub fn engine_main(
     let mut loaded = false;
     let mut failures = 0usize;
 
-    #[cfg(not(target_os = "android"))]
-    let mut _dummy: Option<Producer<f32>> = None;
-
     macro_rules! open_track {
         ($idx:expr, $start:expr) => {{
             let idx: usize = $idx;
@@ -334,27 +332,18 @@ pub fn engine_main(
                 Ok(evt) => match evt {
                     DecEvt::NeedStream { index, rate } => {
                         stream = None;
-                        #[cfg(target_os = "android")]
-                        {
-                            match crate::output::build_stream(rate, shared.clone()) {
-                                Ok((s, prod)) => {
-                                    let actual = shared.stream_rate.load(Ordering::Acquire);
-                                    stream = Some(s);
-                                    let _ = dec_tx.send(DecCmd::NewProducer(prod, actual));
-                                    emit(EVENT_STREAM_INFO, index as i32, i64::from(actual), i64::from(rate), None);
-                                }
-                                Err(msg) => {
-                                    shared.set_status(STATUS_ERROR);
-                                    emit(EVENT_ERROR, index as i32, 0, 0, Some(&msg));
-                                    let _ = dec_tx.send(DecCmd::Stop);
-                                }
+                        match backend::build_stream(rate, shared.clone()) {
+                            Ok((s, prod)) => {
+                                let actual = shared.stream_rate.load(Ordering::Acquire);
+                                stream = Some(s);
+                                let _ = dec_tx.send(DecCmd::NewProducer(prod, actual));
+                                emit(EVENT_STREAM_INFO, index as i32, i64::from(actual), i64::from(rate), None);
                             }
-                        }
-                        #[cfg(not(target_os = "android"))]
-                        {
-                            let (p, _c) = RingBuffer::<f32>::new(4096);
-                            _dummy = Some(p);
-                            emit(EVENT_STREAM_INFO, index as i32, i64::from(rate), i64::from(rate), None);
+                            Err(msg) => {
+                                shared.set_status(STATUS_ERROR);
+                                emit(EVENT_ERROR, index as i32, 0, 0, Some(&msg));
+                                let _ = dec_tx.send(DecCmd::Stop);
+                            }
                         }
                     }
                     DecEvt::TrackStarted { index, duration_ms, source_rate, stream_rate, bits, channels, codec } => {

@@ -15,6 +15,7 @@ data class Track(
     val durationMs: Long,
     val trackNo: Int,
     val year: Int,
+    val videoId: String? = null,
 ) {
     val displayTitle: String get() = title.ifBlank { fileName() }
 

@@ -27,6 +27,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.Surface
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -96,15 +97,23 @@ fun App(viewModel: PlayerViewModel = viewModel()) {
         }
     }
 
+    ui.message?.let { message ->
+        LaunchedEffect(message) {
+            snackbarHostState.showSnackbar(message)
+            viewModel.dismissMessage()
+        }
+    }
+
     BackHandler(enabled = showNowPlaying) { showNowPlaying = false }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+    Surface(
+        color = MaterialTheme.colorScheme.background,
+        contentColor = MaterialTheme.colorScheme.onBackground,
+        modifier = Modifier.fillMaxSize(),
     ) {
         Scaffold(
             containerColor = Color.Transparent,
+            contentColor = MaterialTheme.colorScheme.onBackground,
             snackbarHost = { SnackbarHost(snackbarHostState) },
             bottomBar = {
                 if (ui.current != null && !showNowPlaying) {
@@ -134,7 +143,10 @@ fun App(viewModel: PlayerViewModel = viewModel()) {
             NowPlayingScreen(
                 ui = ui,
                 viewModel = viewModel,
-                onClose = { showNowPlaying = false },
+                onClose = {
+                    showNowPlaying = false
+                    viewModel.stopVideo()
+                },
             )
         }
     }

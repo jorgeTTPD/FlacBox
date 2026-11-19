@@ -24,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.QueueMusic
@@ -32,7 +33,9 @@ import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -51,10 +54,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
+import androidx.media3.ui.PlayerView
+import dev.jorge.flacbox.PlayerMode
 import dev.jorge.flacbox.PlayerViewModel
 import dev.jorge.flacbox.UiState
 
@@ -110,13 +117,53 @@ fun NowPlayingScreen(
 
             Spacer(Modifier.height(12.dp))
 
-            Artwork(
-                track = track,
-                modifier = Modifier.fillMaxWidth().aspectRatio(1f),
-                corner = 24.dp,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                FilterChip(
+                    selected = ui.playerMode == PlayerMode.AUDIO,
+                    onClick = { viewModel.setPlayerMode(PlayerMode.AUDIO) },
+                    label = { Text("Audio") },
+                    leadingIcon = { Icon(Icons.Rounded.MusicNote, contentDescription = null) },
+                )
+                Spacer(Modifier.width(12.dp))
+                FilterChip(
+                    selected = ui.playerMode == PlayerMode.VIDEO,
+                    onClick = { viewModel.setPlayerMode(PlayerMode.VIDEO) },
+                    label = { Text("Video") },
+                    leadingIcon = { Icon(Icons.Rounded.Videocam, contentDescription = null) },
+                )
+            }
 
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(20.dp))
+
+            val video = ui.video
+            if (video != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(16f / 9f)
+                        .background(Color.Black),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    AndroidView(
+                        factory = { context ->
+                            PlayerView(context).apply { useController = false }
+                        },
+                        update = { view -> view.player = viewModel.videoManager.player },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+            } else {
+                Artwork(
+                    track = track,
+                    modifier = Modifier.fillMaxWidth().aspectRatio(1f),
+                    corner = 24.dp,
+                )
+                Spacer(Modifier.height(28.dp))
+            }
 
             Text(
                 text = track.displayTitle,

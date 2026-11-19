@@ -14,6 +14,11 @@ import dev.jorge.flacbox.data.Track
 import dev.jorge.flacbox.data.toMediaItem
 import dev.jorge.flacbox.data.toTrack
 import dev.jorge.flacbox.playback.PlaybackService
+import dev.jorge.flacbox.video.VideoCache
+import dev.jorge.flacbox.video.VideoManager
+import dev.jorge.flacbox.video.VideoPlaybackState
+import dev.jorge.flacbox.video.VideoRegistry
+import dev.jorge.flacbox.video.YouTubeClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -24,6 +29,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+enum class PlayerMode { AUDIO, VIDEO }
 
 data class UiState(
     val tracks: List<Track> = emptyList(),
@@ -40,6 +47,9 @@ data class UiState(
     val connected: Boolean = false,
     val search: String = "",
     val error: String? = null,
+    val video: VideoPlaybackState? = null,
+    val playerMode: PlayerMode = PlayerMode.VIDEO,
+    val message: String? = null,
 )
 
 data class AlbumGroup(
@@ -57,6 +67,7 @@ data class ArtistGroup(
 class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     private val scanner = MusicScanner(app)
+    val videoManager = VideoManager(app)
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui.asStateFlow()
 
@@ -89,6 +100,11 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         connect()
+        viewModelScope.launch {
+            videoManager.state.collect { state ->
+                _ui.update { it.copy(video = state) }
+            }
+        }
     }
 
     private fun connect() {
@@ -137,7 +153,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         val itemCount = c.mediaItemCount
         if (itemCount != queueCount) syncQueue()
 
+        val video = videoManager.state.value
         val duration = when {
+            video != null && video.durationMs > 0 -> video.durationMs
             c.duration != C.TIME_UNSET && c.duration > 0 -> c.duration
             current != null -> current.durationMs
             else -> 0L
@@ -146,9 +164,15 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         _ui.update {
             it.copy(
                 current = current ?: it.current,
-                positionMs = if (current == null) 0L else c.currentPosition.coerceAtLeast(0L),
+                positionMs = if (video != null) {
+                    video.positionMs
+                } else if (current == null) {
+                    0L
+                } else {
+                    c.currentPosition.coerceAtLeast(0L)
+                },
                 durationMs = duration,
-                isPlaying = c.isPlaying,
+                isPlaying = c.isPlaying || videoManager.isVideoPlaying,
                 repeatMode = c.repeatMode,
                 shuffle = c.shuffleModeEnabled,
             )
@@ -219,10 +243,102 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     // ---------------------------------------------------------------- play
 
     fun playTrack(track: Track) {
+        if (_ui.value.playerMode == PlayerMode.AUDIO) {
+            playAudio(track)
+        } else {
+            playVideoFor(track)
+        }
+    }
+
+    fun setPlayerMode(mode: PlayerMode) {
+        if (_ui.value.playerMode == mode) return
+        _ui.update { it.copy(playerMode = mode) }
+        val track = _ui.value.current ?: return
+        when (mode) {
+            PlayerMode.AUDIO -> {
+                videoManager.stop()
+                playAudio(track)
+            }
+            PlayerMode.VIDEO -> playVideoFor(track)
+        }
+    }
+
+    private fun playVideoFor(track: Track) {
+        val app = getApplication<Application>()
+        val videoId = track.videoId
+        if (videoId != null && VideoCache.isCached(app, videoId)) {
+            startVideo(track, videoId)
+            return
+        }
+        viewModelScope.launch {
+            val found = runCatching { YouTubeClient.searchForTrack(track) }.getOrNull()
+            if (found != null) {
+                VideoRegistry.set(app, track.path, found.videoId)
+                _ui.update { ui ->
+                    ui.copy(
+                        tracks = ui.tracks.map {
+                            if (it.path == track.path) it.copy(videoId = found.videoId) else it
+                        },
+                    )
+                }
+                val ready = VideoCache.isCached(app, found.videoId) ||
+                    withContext(Dispatchers.IO) {
+                        found.streamUrl?.let { VideoCache.download(app, found.videoId, it) } ?: false
+                    }
+                if (ready && VideoCache.isCached(app, found.videoId)) {
+                    startVideo(track.copy(videoId = found.videoId), found.videoId)
+                    return@launch
+                }
+            }
+            playAudio(track)
+        }
+    }
+
+    private fun startVideo(track: Track, videoId: String) {
+        controller?.pause()
+        videoManager.play(videoId, VideoCache.videoFile(getApplication<Application>(), videoId))
+        _ui.update { it.copy(current = track, isPlaying = true) }
+    }
+
+    private fun playAudio(track: Track) {
         val list = filteredTracks().ifEmpty { _ui.value.tracks }
         val index = list.indexOfFirst { it.path == track.path }
         playQueue(list, if (index >= 0) index else 0)
     }
+
+    fun stopVideo() = videoManager.stop()
+
+    fun addToQueue(track: Track) {
+        val c = controller ?: return
+        val index = if (c.mediaItemCount == 0) {
+            0
+        } else {
+            (c.currentMediaItemIndex + 1).coerceAtMost(c.mediaItemCount)
+        }
+        c.addMediaItem(index, track.toMediaItem())
+        _ui.update { it.copy(message = "Se reproducirá a continuación: ${track.displayTitle}") }
+    }
+
+    fun clearVideoCache() {
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            videoManager.stop()
+            withContext(Dispatchers.IO) {
+                VideoCache.clear(app)
+                VideoRegistry.clear(app)
+            }
+            _ui.update { ui ->
+                ui.copy(
+                    tracks = ui.tracks.map {
+                        if (it.videoId != null) it.copy(videoId = null) else it
+                    },
+                    message = "Caché de videos eliminada",
+                )
+            }
+        }
+    }
+
+    fun dismissMessage() = _ui.update { it.copy(message = null) }
 
     fun playAlbum(album: AlbumGroup) = playQueue(album.tracks, 0)
 
@@ -253,6 +369,10 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun togglePlay() {
+        if (videoManager.isActive) {
+            videoManager.togglePlay()
+            return
+        }
         val c = controller ?: return
         if (c.isPlaying) {
             c.pause()
@@ -267,6 +387,10 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     fun previous() = controller?.seekToPreviousMediaItem()
 
     fun seekTo(positionMs: Long) {
+        if (videoManager.isActive) {
+            videoManager.seekTo(positionMs)
+            return
+        }
         controller?.seekTo(positionMs.coerceAtLeast(0L))
     }
 
@@ -291,6 +415,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         controller?.removeListener(listener)
         controller?.release()
         controller = null
+        videoManager.release()
         super.onCleared()
     }
 }

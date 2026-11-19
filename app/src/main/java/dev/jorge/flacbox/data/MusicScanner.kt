@@ -4,6 +4,8 @@ import android.content.ContentUris
 import android.content.Context
 import android.os.Build
 import android.provider.MediaStore
+import dev.jorge.flacbox.audio.AudioEngine
+import dev.jorge.flacbox.video.VideoRegistry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -71,6 +73,7 @@ class MusicScanner(private val context: Context) {
 
                 val duration = c.getLong(durationCol)
                 if (duration < 2_000L) continue
+                if (AudioEngine.readMeta(path)?.hasArt != true) continue
 
                 val id = c.getLong(idCol)
                 val rawTrack = c.getInt(trackCol)
@@ -88,6 +91,7 @@ class MusicScanner(private val context: Context) {
                     durationMs = duration,
                     trackNo = rawTrack % 1000,
                     year = c.getInt(yearCol),
+                    videoId = VideoRegistry.get(context, path),
                 )
                 found[path] = track
             }

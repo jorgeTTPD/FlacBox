@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
@@ -75,6 +76,9 @@ fun LibraryScreen(
                 }
                 IconButton(onClick = { viewModel.refreshLibrary() }) {
                     Icon(Icons.Rounded.Refresh, contentDescription = "Reescanear")
+                }
+                IconButton(onClick = { viewModel.clearVideoCache() }) {
+                    Icon(Icons.Rounded.Delete, contentDescription = "Limpiar caché de videos")
                 }
                 IconButton(
                     onClick = { viewModel.playAll(shuffle = true) },
@@ -139,6 +143,7 @@ fun LibraryScreen(
                         onClick = {
                             if (isCurrent) onOpenNowPlaying() else viewModel.playTrack(track)
                         },
+                        onAddToQueue = { viewModel.addToQueue(track) },
                     )
                 }
             }

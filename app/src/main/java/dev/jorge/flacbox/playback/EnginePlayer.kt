@@ -258,7 +258,17 @@ class EnginePlayer(
     override fun handleAddMediaItems(
         index: Int,
         mediaItems: List<MediaItem>,
-    ): ListenableFuture<*> = Futures.immediateVoidFuture()
+    ): ListenableFuture<*> {
+        if (mediaItems.isEmpty()) return Futures.immediateVoidFuture()
+        val insertAt = if (index == C.INDEX_UNSET) items.size else index.coerceIn(0, items.size)
+        val updated = items.toMutableList().also { it.addAll(insertAt, mediaItems) }
+        val position = AudioEngine.snapshot().positionMs
+        items = updated
+        playlistData = items.mapIndexed { i, item -> itemData(i, item) }
+        AudioEngine.setQueue(items.map { it.mediaId }, currentIndex, position)
+        if (playWhenReady) AudioEngine.play()
+        return Futures.immediateVoidFuture()
+    }
 
     override fun handleMoveMediaItems(
         fromIndex: Int,
